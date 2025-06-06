@@ -1,5 +1,5 @@
-/catboost_info
-/data
-/results
+catboost_info/
+data/
+results/
 
 __pycache__/
