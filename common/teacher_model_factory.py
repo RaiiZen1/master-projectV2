@@ -703,7 +703,7 @@ class TabMTeacherModel(TeacherModelBase):
                         1, keepdim=True
                     )  # Average and keep output dimension
 
-                return logits.cpu().numpy()
+                return logits.cpu().numpy().squeeze(-1)
 
     def count_parameters(self):
         """
@@ -1062,7 +1062,7 @@ class MLPTeacherModel(TeacherModelBase):
                         1, keepdim=True
                     )  # Average and keep output dimension
 
-                return logits.cpu().numpy()
+                return logits.cpu().numpy().squeeze(-1)
 
     def count_parameters(self):
         """
