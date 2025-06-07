@@ -1091,7 +1091,6 @@ class GRANDETeacherModel(TeacherModelBase):
         """
         self.device = kwargs.pop("device", "cpu")
         self.config = kwargs.pop("config")
-        self.dataset_id = kwargs.pop("dataset_id")
         self.task_type = kwargs.pop("task_type")
         super().__init__(**kwargs)
 
