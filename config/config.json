@@ -20,7 +20,7 @@
         "threshold_high_cardinality": 10
     },
     "model": {
-        "teacher_model": "tabpfn",
+        "teacher_model": "catboost", 
         "student_model": "mlp"
     },
     "training": {
