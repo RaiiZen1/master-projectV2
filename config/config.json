@@ -30,6 +30,7 @@
         ],
         "cache_dir_path": "data/cache/",
         "fold_indices_path": "data/fold_indices/",
+        "output_dir_path": "data/output/",
         "optuna_db_path": "data/optuna_db/",
         "outer_folds_path": "data/outer_fold/",
         "results_dir_path": "results/"
