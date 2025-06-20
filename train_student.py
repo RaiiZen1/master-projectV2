@@ -12,7 +12,9 @@ from common.student_model_factory import get_student_model
 from common.utils import setup_logging, load_config, check_GPU_availability, set_seed
 
 
-def train_student(dataset_id=None, config=None):
+def train_student(
+    dataset_id=None, config=None, student_model_type=None, teacher_model_type=None
+):
     # =============================================================================
     # MAIN TRAINING LOOP - Process each dataset independently
     # =============================================================================
@@ -25,8 +27,6 @@ def train_student(dataset_id=None, config=None):
     logger.info("Loading configuration...")
 
     # Extract model configuration for this run
-    student_model_type = config["model"]["student_model"]
-    teacher_model_type = config["model"]["teacher_model"]
     preprocessing_type = config["student_models"][student_model_type]["preprocessing"]
     use_hpo = config["training"]["use_hpo"]
     train_on_logits = config["training"]["train_on_logits"]
@@ -359,6 +359,7 @@ def train_student(dataset_id=None, config=None):
             device=device,
             hyperparams=best_hyperparams,  # Use best hyperparameters from HPO
             cat_cols=cat_cols,
+            model_type=student_model_type,
         )
         model.train(X_train, teacher_targets_train)
 
@@ -637,8 +638,14 @@ if __name__ == "__main__":
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Train teacher model.")
     parser.add_argument(
-        "--model_type", required=True, help="Type of teacher model to train."
+        "--student_model_type", required=True, help="Type of teacher model to train."
     )
+    parser.add_argument(
+        "--teacher_model_type",
+        default=None,
+        help="Type of teacher model to use for training.",
+    )
+
     args = parser.parse_args()
 
     # Load configuration
@@ -647,4 +654,9 @@ if __name__ == "__main__":
 
     # Train teacher models for each dataset
     for dataset_id in datasets:
-        train_student(dataset_id=dataset_id, config=config)
+        train_student(
+            dataset_id=dataset_id,
+            config=config,
+            student_model_type=args.student_model_type,
+            teacher_model_type=args.teacher_model_type,
+        )
