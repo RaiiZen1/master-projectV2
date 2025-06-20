@@ -1185,6 +1185,7 @@ class RandomForestStudentModel(StudentModelBase):
 
 def get_student_model(
     config: dict,
+    model_type: str,
     task_type: Literal["binary", "regression"],
     device,
     hyperparams,
@@ -1205,7 +1206,6 @@ def get_student_model(
     TeacherModelBase
         An instance of the teacher model.
     """
-    model_type = config["model"]["student_model"]
     if model_type == "catboost":
         return CatBoostStudentModel(
             config=config, task_type=task_type, device=device, hyperparams=hyperparams
