@@ -631,7 +631,7 @@ def train_student(
         f"{dataset_id}_{student_model_type}({teacher_model_type})_{model_task_type[:2]}.csv",
     )
     output_df.to_csv(output_file, index=False)
-    logger.info(f"{config['model']['student_model']} outputs saved to: {output_file}")
+    logger.info(f"{student_model_type} outputs saved to: {output_file}")
 
 
 if __name__ == "__main__":
