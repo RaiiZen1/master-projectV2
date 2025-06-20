@@ -1188,6 +1188,7 @@ class RandomForestTeacherModel(TeacherModelBase):
 
 def get_teacher_model(
     config: dict,
+    model_type: str,
     task_type: Literal["binary", "regression"],
     device,
     hyperparams,
@@ -1208,7 +1209,6 @@ def get_teacher_model(
     TeacherModelBase
         An instance of the teacher model.
     """
-    model_type = config["model"]["teacher_model"]
     if model_type == "tabpfn":
         return TabPFNTeacherModel(
             config=config, task_type=task_type, device=device, hyperparams=hyperparams

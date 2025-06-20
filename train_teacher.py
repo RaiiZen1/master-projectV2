@@ -1,3 +1,4 @@
+import argparse
 import json
 import numpy as np
 import optuna
@@ -12,7 +13,7 @@ from common.utils import setup_logging, load_config, check_GPU_availability, set
 from sklearn.model_selection import StratifiedKFold, KFold
 
 
-def train_teacher(dataset_id=None, config=None):
+def train_teacher(dataset_id=None, config=None, model_type=None):
     # =============================================================================
     # MAIN TRAINING LOOP - Process each dataset independently
     # =============================================================================
@@ -25,7 +26,6 @@ def train_teacher(dataset_id=None, config=None):
     logger.info("Loading configuration...")
 
     # Extract model configuration for this run
-    model_type = config["model"]["teacher_model"]
     preprocessing_type = config["teacher_models"][model_type]["preprocessing"]
     use_hpo = config["training"]["use_hpo"]
 
@@ -218,6 +218,7 @@ def train_teacher(dataset_id=None, config=None):
                     device=device,
                     hyperparams=hyperparams,
                     cat_cols=cat_cols,
+                    model_type=model_type,
                 )
                 logger.info(
                     f"Training Model on Outer Fold {outer_fold}, Inner Fold {inner_fold}..."
@@ -334,6 +335,7 @@ def train_teacher(dataset_id=None, config=None):
             device=device,
             hyperparams=best_hyperparams,  # Use best hyperparameters from HPO
             cat_cols=cat_cols,
+            model_type=model_type,
         )
         model.train(X_train, y_train)
 
@@ -511,9 +513,17 @@ def train_teacher(dataset_id=None, config=None):
 
 
 if __name__ == "__main__":
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Train teacher model.")
+    parser.add_argument(
+        "--model_type", required=True, help="Type of teacher model to train."
+    )
+    args = parser.parse_args()
 
+    # Load configuration
     config = load_config()
     datasets = config["data"]["datasets"]
 
+    # Train teacher models for each dataset
     for dataset_id in datasets:
-        train_teacher(dataset_id=dataset_id, config=config)
+        train_teacher(dataset_id=dataset_id, config=config, model_type=args.model_type)

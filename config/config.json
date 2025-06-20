@@ -33,19 +33,14 @@
         "cache_dir_path": "data/cache/",
         "fold_indices_path": "data/fold_indices/",
         "optuna_db_path": "data/optuna_db/",
-        "output_dir_path": "data/output/",
         "outer_folds_path": "data/outer_fold/",
         "results_dir_path": "results/"
     },
     "preprocessing": {
         "threshold_high_cardinality": 10
     },
-    "model": {
-        "teacher_model": "grande",
-        "student_model": "random_forest"
-    },
     "training": {
-        "use_hpo": true,
+        "use_hpo": false,
         "train_on_logits": true,
         "trials": 30,
         "random_state": 42,
