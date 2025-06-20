@@ -26,8 +26,7 @@
             23515,
             416,
             504,
-            688,
-            42570
+            688
         ],
         "cache_dir_path": "data/cache/",
         "fold_indices_path": "data/fold_indices/",
