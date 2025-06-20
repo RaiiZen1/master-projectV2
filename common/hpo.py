@@ -170,7 +170,7 @@ def suggest_hyperparameters(
         else:
             hyperparameter = {
                 "n_estimators": 1000,
-                "max_depth": None,
+                "max_depth": 40,
                 "min_samples_split": 2,
                 "min_samples_leaf": 1,
             }
