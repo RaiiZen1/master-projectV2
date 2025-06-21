@@ -39,7 +39,7 @@
         "threshold_high_cardinality": 10
     },
     "training": {
-        "use_hpo": false,
+        "use_hpo": true,
         "train_on_logits": true,
         "trials": 30,
         "random_state": 42,

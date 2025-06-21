@@ -294,7 +294,9 @@ def train_teacher(dataset_id=None, config=None, model_type=None):
             study.enqueue_trial(default_hyperparams)
             study.optimize(
                 objective,
-                n_trials=remaining_trials if use_hpo else 1,
+                n_trials=(
+                    remaining_trials if use_hpo and not model_type == "tabpfn" else 1
+                ),
                 show_progress_bar=False,
             )
         else:
