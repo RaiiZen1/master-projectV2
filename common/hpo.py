@@ -165,12 +165,12 @@ def suggest_hyperparameters(
             else:
                 hyperparameter["criterion"] = trial.suggest_categorical(
                     "criterion",
-                    ["squared_error", "absolute_error", "poisson", "friedman_mse"],
+                    ["squared_error", "absolute_error", "friedman_mse"],
                 )
         else:
             hyperparameter = {
                 "n_estimators": 1000,
-                "max_depth": None,
+                "max_depth": 40,
                 "min_samples_split": 2,
                 "min_samples_leaf": 1,
             }

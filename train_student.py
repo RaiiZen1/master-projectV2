@@ -1,3 +1,4 @@
+import argparse
 import json
 import numpy as np
 import optuna
@@ -9,10 +10,11 @@ from common.hpo import suggest_hyperparameters
 from common.preprocessing import preprocess
 from common.student_model_factory import get_student_model
 from common.utils import setup_logging, load_config, check_GPU_availability, set_seed
-from sklearn.model_selection import StratifiedKFold, KFold
 
 
-def train_student(dataset_id=None, config=None):
+def train_student(
+    dataset_id=None, config=None, student_model_type=None, teacher_model_type=None
+):
     # =============================================================================
     # MAIN TRAINING LOOP - Process each dataset independently
     # =============================================================================
@@ -25,8 +27,6 @@ def train_student(dataset_id=None, config=None):
     logger.info("Loading configuration...")
 
     # Extract model configuration for this run
-    student_model_type = config["model"]["student_model"]
-    teacher_model_type = config["model"]["teacher_model"]
     preprocessing_type = config["student_models"][student_model_type]["preprocessing"]
     use_hpo = config["training"]["use_hpo"]
     train_on_logits = config["training"]["train_on_logits"]
@@ -87,62 +87,28 @@ def train_student(dataset_id=None, config=None):
     # STEP 2: LOAD PREVIOUSLY SAVED FOLD INDICES AND TEACHER PREDICTIONS
     # -------------------------------------------------------------------------
     # Load the saved fold indices
-    fold_indices_file = os.path.join(
-        config["data"]["fold_indices_path"], f"dataset_{dataset_id}.json"
+    # Create the full directory structure
+    sub_folder = "hpo" if use_hpo else "default"
+    fold_indices_dir = os.path.join(
+        config["data"]["fold_indices_path"], sub_folder, "teacher"
     )
+    fold_indices_file = os.path.join(
+        fold_indices_dir, f"{dataset_id}_{teacher_model_type}.json"
+    )
+
     with open(fold_indices_file, "r") as f:
         fold_indices = json.load(f)
     logger.info(f"Loaded fold indices from: {fold_indices_file}")
 
-    # Load the TabPFN outputs (teacher predictions)
-    subfolder = "hpo" if config["training"]["use_hpo"] else "default"
-    directory = os.path.join(config["data"]["output_dir_path"], subfolder, "teacher")
-    teacher_outputs_file = os.path.join(
-        directory, f"{dataset_id}_{teacher_model_type}.csv"
-    )
-    teacher_outputs_df = pd.read_csv(teacher_outputs_file)
-    logger.info(f"Loaded {teacher_model_type} outputs from: {teacher_outputs_file}")
-
-    # --------------------------------------------------------------------------
-    # STEP 3: PREPROCESS TEACHER OUTPUTS
-    # --------------------------------------------------------------------------
-    if original_task_type == "regression":
-        model_task_type = "regression"
-        # For regression, we can use the outputs directly as they are already numeric
-        teacher_preds = teacher_outputs_df["output"].astype(float)
-        # Create a mapping from index to outputs for easy lookup
-        index_to_outputs = dict(zip(teacher_outputs_df["index"].values, teacher_preds))
-
-    else:
-        if train_on_logits:
-            model_task_type = "regression"
-            # Convert probabilities to logits
-            # Clip probabilities to avoid log(0) or log(1)
-            eps = 1e-7
-            teacher_probs = np.clip(teacher_outputs_df["output"].values, eps, 1 - eps)
-            teacher_logits = np.log(teacher_probs / (1 - teacher_probs))
-            # Create a mapping from index to logits for easy lookup
-            index_to_outputs = dict(
-                zip(teacher_outputs_df["index"].values, teacher_logits)
-            )
-        else:
-            model_task_type = "binary"
-            # Convert probabilities to binary predictions
-            teacher_preds = (teacher_outputs_df["output"].values > 0.5).astype(int)
-            # Create a mapping from index to predictions for easy lookup
-            index_to_outputs = dict(
-                zip(teacher_outputs_df["index"].values, teacher_preds)
-            )
-
     # -------------------------------------------------------------------------
-    # STEP 4: INITIALIZE DATA STRUCTURES
+    # STEP 3: INITIALIZE DATA STRUCTURES
     # -------------------------------------------------------------------------
     output_dfs = []
 
     outer_fold_scores = []
 
     # =========================================================================
-    # STEP 5: OUTER CROSS-VALIDATION LOOP
+    # STEP 4: OUTER CROSS-VALIDATION LOOP
     # =========================================================================
     # Each iteration provides one unbiased performance estimate
     for fold_key, fold_data in fold_indices["outer_folds"].items():
@@ -164,6 +130,40 @@ def train_student(dataset_id=None, config=None):
         # Split data according to current outer fold
         X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
         y_train, y_test = y[train_idx], y[test_idx]
+
+        # --------------------------------------------------------------------------
+        # STEP 5: PREPROCESS TEACHER OUTPUTS
+        # --------------------------------------------------------------------------
+        if original_task_type == "regression":
+            model_task_type = "regression"
+            # For regression, we can use the outputs directly as they are already numeric
+            teacher_targets_train = np.array(fold_data["train_preds"])
+            teacher_targets_test = np.array(fold_data["test_preds"])
+        else:
+            if train_on_logits:
+                model_task_type = "regression"
+                # Convert probabilities to logits
+                # Clip probabilities to avoid log(0) or log(1)
+                eps = 1e-7
+                teacher_probs_train = np.clip(fold_data["train_preds"], eps, 1 - eps)
+                teacher_probs_test = np.clip(fold_data["test_preds"], eps, 1 - eps)
+
+                teacher_targets_train = np.log(
+                    teacher_probs_train / (1 - teacher_probs_train)
+                )
+                teacher_targets_test = np.log(
+                    teacher_probs_test / (1 - teacher_probs_test)
+                )
+            else:
+                model_task_type = "binary"
+                # Prepare training targets (hard labels)
+                teacher_targets_train = (
+                    np.array(fold_data["train_preds"]) > 0.5
+                ).astype(int)
+                # Prepare test targets (hard labels)
+                teacher_targets_test = (np.array(fold_data["test_preds"]) > 0.5).astype(
+                    int
+                )
 
         # ---------------------------------------------------------------------
         # INNER CROSS-VALIDATION SETUP (for model validation)
@@ -215,12 +215,10 @@ def train_student(dataset_id=None, config=None):
                 )  # Hard labels or Regression targets
 
                 # Get teacher outputs for inner training and validation sets
-                teacher_outputs_inner_train = np.array(
-                    [index_to_outputs[idx] for idx in absolute_inner_train_idx]
-                )
-                teacher_outputs_inner_val = np.array(
-                    [index_to_outputs[idx] for idx in absolute_inner_val_idx]
-                )  # Probs or Regression logits
+                teacher_outputs_inner_train = teacher_targets_train[
+                    inner_train_relative
+                ]
+                teacher_outputs_inner_val = teacher_targets_train[inner_val_relative]
 
                 # ---------------------------------------------------------------------
                 # PREPROCESSING: Apply model-specific data transformations
@@ -242,6 +240,7 @@ def train_student(dataset_id=None, config=None):
                     device=device,
                     hyperparams=hyperparams,
                     cat_cols=cat_cols,
+                    model_type=student_model_type,
                 )
                 logger.info(
                     f"Training Model on Outer Fold {outer_fold}, Inner Fold {inner_fold}..."
@@ -341,8 +340,6 @@ def train_student(dataset_id=None, config=None):
         # =========================================================================
         # STEP 7: FINAL MODEL TRAINING (on complete outer training set)
         # =========================================================================
-        # Get teacher logits for outer training set
-        teacher_outputs_train = np.array([index_to_outputs[idx] for idx in train_idx])
         # Preprocess the outer training and test sets
         X_train, X_test = preprocess(
             X_train,
@@ -362,8 +359,9 @@ def train_student(dataset_id=None, config=None):
             device=device,
             hyperparams=best_hyperparams,  # Use best hyperparameters from HPO
             cat_cols=cat_cols,
+            model_type=student_model_type,
         )
-        model.train(X_train, teacher_outputs_train)
+        model.train(X_train, teacher_targets_train)
 
         # =========================================================================
         # STEP 8: FINAL EVALUATION (unbiased performance on outer test set)
@@ -373,9 +371,8 @@ def train_student(dataset_id=None, config=None):
         test_preds = model.predict(X_test)  # Predicted logits or probabilities
         end_time = time.time() - start_time
         logger.info(f"\t Inference Time: {end_time:.5f} seconds")
-        teacher_outputs_test = np.array([index_to_outputs[idx] for idx in test_idx])
         test_metrics = model.evaluate(
-            test_preds, y_test, teacher_outputs_test, original_task_type
+            test_preds, y_test, teacher_targets_test, original_task_type
         )
 
         # Store outer fold score for later analysis
@@ -634,13 +631,32 @@ def train_student(dataset_id=None, config=None):
         f"{dataset_id}_{student_model_type}({teacher_model_type})_{model_task_type[:2]}.csv",
     )
     output_df.to_csv(output_file, index=False)
-    logger.info(f"{config['model']['student_model']} outputs saved to: {output_file}")
+    logger.info(f"{student_model_type} outputs saved to: {output_file}")
 
 
 if __name__ == "__main__":
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Train teacher model.")
+    parser.add_argument(
+        "--student_model_type", required=True, help="Type of teacher model to train."
+    )
+    parser.add_argument(
+        "--teacher_model_type",
+        default=None,
+        help="Type of teacher model to use for training.",
+    )
 
+    args = parser.parse_args()
+
+    # Load configuration
     config = load_config()
     datasets = config["data"]["datasets"]
 
+    # Train teacher models for each dataset
     for dataset_id in datasets:
-        train_student(dataset_id=dataset_id, config=config)
+        train_student(
+            dataset_id=dataset_id,
+            config=config,
+            student_model_type=args.student_model_type,
+            teacher_model_type=args.teacher_model_type,
+        )

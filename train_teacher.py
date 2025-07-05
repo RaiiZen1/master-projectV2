@@ -1,3 +1,4 @@
+import argparse
 import json
 import numpy as np
 import optuna
@@ -12,7 +13,7 @@ from common.utils import setup_logging, load_config, check_GPU_availability, set
 from sklearn.model_selection import StratifiedKFold, KFold
 
 
-def train_teacher(dataset_id=None, config=None):
+def train_teacher(dataset_id=None, config=None, model_type=None):
     # =============================================================================
     # MAIN TRAINING LOOP - Process each dataset independently
     # =============================================================================
@@ -25,7 +26,6 @@ def train_teacher(dataset_id=None, config=None):
     logger.info("Loading configuration...")
 
     # Extract model configuration for this run
-    model_type = config["model"]["teacher_model"]
     preprocessing_type = config["teacher_models"][model_type]["preprocessing"]
     use_hpo = config["training"]["use_hpo"]
 
@@ -77,9 +77,7 @@ def train_teacher(dataset_id=None, config=None):
     # -------------------------------------------------------------------------
     # STEP 2: INITIALIZE DATA STRUCTURES
     # -------------------------------------------------------------------------
-    # List to store predictions from each outer fold
-    output_dfs = []
-
+    # List to store prediction scores from each outer fold
     outer_fold_scores = []
 
     # Dictionary to store all fold indices for reproducibility and student training
@@ -220,6 +218,7 @@ def train_teacher(dataset_id=None, config=None):
                     device=device,
                     hyperparams=hyperparams,
                     cat_cols=cat_cols,
+                    model_type=model_type,
                 )
                 logger.info(
                     f"Training Model on Outer Fold {outer_fold}, Inner Fold {inner_fold}..."
@@ -295,7 +294,9 @@ def train_teacher(dataset_id=None, config=None):
             study.enqueue_trial(default_hyperparams)
             study.optimize(
                 objective,
-                n_trials=remaining_trials if use_hpo else 1,
+                n_trials=(
+                    remaining_trials if use_hpo and not model_type == "tabpfn" else 1
+                ),
                 show_progress_bar=False,
             )
         else:
@@ -336,6 +337,7 @@ def train_teacher(dataset_id=None, config=None):
             device=device,
             hyperparams=best_hyperparams,  # Use best hyperparameters from HPO
             cat_cols=cat_cols,
+            model_type=model_type,
         )
         model.train(X_train, y_train)
 
@@ -345,6 +347,7 @@ def train_teacher(dataset_id=None, config=None):
         # This provides the unbiased performance estimate for this fold
         start_time = time.time()
         test_preds = model.predict(X_test)
+        train_preds = model.predict(X_train)
         end_time = time.time() - start_time
         logger.info(f"\t Inference Time: {end_time:.5f} seconds")
         test_metrics = model.evaluate(test_preds, y_test)
@@ -363,13 +366,13 @@ def train_teacher(dataset_id=None, config=None):
         # =====================================================================
         # Save predictions with their corresponding dataset indices
         # These will be used as targets for training student models
-        output_dfs.append(
-            pd.DataFrame(
-                {
-                    "index": test_idx,
-                    "output": test_preds[:, 1] if task_type == "binary" else test_preds,
-                }
-            )
+        fold_indices["outer_folds"][f"fold_{outer_fold}"]["train_preds"] = (
+            train_preds[:, 1].tolist()
+            if task_type == "binary"
+            else train_preds.tolist()
+        )
+        fold_indices["outer_folds"][f"fold_{outer_fold}"]["test_preds"] = (
+            test_preds[:, 1].tolist() if task_type == "binary" else test_preds.tolist()
         )
 
     # =========================================================================
@@ -494,42 +497,35 @@ def train_teacher(dataset_id=None, config=None):
     # -------------------------------------------------------------------------
     # SAVE FOLD INDICES (for reproducibility and student training)
     # -------------------------------------------------------------------------
-    fold_indices_file = os.path.join(
-        config["data"]["fold_indices_path"], f"dataset_{dataset_id}.json"
-    )
-    # Create the directory if it doesn't exist
-    os.makedirs(config["data"]["fold_indices_path"], exist_ok=True)
-    if not os.path.exists(fold_indices_file):
-        with open(fold_indices_file, "w") as f:
-            json.dump(fold_indices, f, indent=2)
-        logger.info(f"Fold indices saved to: {fold_indices_file}")
-    else:
-        logger.info(f"Fold indices file already exists: {fold_indices_file}")
-
-    # -------------------------------------------------------------------------
-    # SAVE TEACHER PREDICTIONS (targets for student training)
-    # -------------------------------------------------------------------------
-    # Combine predictions from all outer folds
-    if output_dfs:  # Check if we have any DataFrames to concatenate
-        output_df = pd.concat(output_dfs, ignore_index=True)
-    else:
-        output_df = pd.DataFrame(columns=["index", "output"])
-    output_df = output_df.sort_values(by="index")
-
     # Create the full directory structure
     sub_folder = "hpo" if use_hpo else "default"
-    output_dir = os.path.join(config["data"]["output_dir_path"], sub_folder, "teacher")
+    output_dir = os.path.join(
+        config["data"]["fold_indices_path"], sub_folder, "teacher"
+    )
     os.makedirs(output_dir, exist_ok=True)
 
-    output_file = os.path.join(output_dir, f"{dataset_id}_{model_type}.csv")
-    output_df.to_csv(output_file, index=False)
-    logger.info(f"{config['model']['teacher_model']} outputs saved to: {output_file}")
+    output_file = os.path.join(output_dir, f"{dataset_id}_{model_type}.json")
+
+    if not os.path.exists(output_file):
+        with open(output_file, "w") as f:
+            json.dump(fold_indices, f, indent=2)
+        logger.info(f"Fold indices saved to: {output_file}")
+    else:
+        logger.info(f"Fold indices file already exists: {output_file}")
 
 
 if __name__ == "__main__":
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Train teacher model.")
+    parser.add_argument(
+        "--model_type", required=True, help="Type of teacher model to train."
+    )
+    args = parser.parse_args()
 
+    # Load configuration
     config = load_config()
     datasets = config["data"]["datasets"]
 
+    # Train teacher models for each dataset
     for dataset_id in datasets:
-        train_teacher(dataset_id=dataset_id, config=config)
+        train_teacher(dataset_id=dataset_id, config=config, model_type=args.model_type)
