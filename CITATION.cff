@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+title: "Evaluation of Gradient-Based Decision Tree Methods for Model Distillation"
+authors:
+  - family-names: Herre
+    given-names: Markus Johannes
+date-released: 2025-08-04
+version: "1.0"
+type: thesis
+thesis-type: Master's Thesis
+institution: University of Mannheim
+url: https://github.com/RaiiZen1/master-projectV2
+message: "If you use this work, please cite it using the BibTeX entry in the README."
