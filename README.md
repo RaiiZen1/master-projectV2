@@ -29,10 +29,9 @@ The repository is organized as follows:
 │   └── utils.py                 # General utility functions.
 ├── config/
 │   └── config.json              # Configuration file for experiments.
-├── notebooks/
-│   ├── results_analysis.ipynb   # Jupyter notebook for analyzing experiment results.
-│   └── training_pipeline.ipynb  # Jupyter notebook demonstrating the training pipeline.
-└── results/                     # Directory for storing final, aggregated results.
+└── notebooks/
+    ├── results_analysis.ipynb   # Jupyter notebook for analyzing experiment results.
+    └── training_pipeline.ipynb  # Jupyter notebook demonstrating the training pipeline.
 ```
 
 ## 3. How to Use This Repository
